@@ -131,7 +131,7 @@ npm run build
 	  "antbot-mcp-server": {
 		"command":"node",
 		"args":[
-			"{다운로드경로}\MCP-Server\build\index.js"
+			"{다운로드 경로}\\build\\index.js"
 		]
 	  }
 	}
@@ -143,8 +143,10 @@ npm run build
 ### ✅ 확인 방법
 
 - Claude Desktop에서 `"AntBot-MCP-Server"`라는 이름으로 도구가 노출되는지 확인
+- ![image](https://github.com/user-attachments/assets/6f5957da-e09d-4b9d-aa2f-b79e75c13d11)
+
 - Claude에게 다음처럼 명령:
-  > `도구 목록을 보여줘` 또는 `AntBot 프로젝트 목록을 불러와`
+  > `antbot 프로젝트 목록을 알려줘`, `PR000000298 프로젝트를 실행해줘`
 
 ## 📦 의존성
 
