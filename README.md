@@ -125,7 +125,7 @@ npm run cleanbuild
 #### 방법 1: Claude Desktop GUI에서 등록
 
 1. Claude Desktop 실행
-2. 왼쪽 상단 버튼 클릭(三) > **파일** > **설정**
+2. 왼쪽 상단 버튼 클릭(![image](https://github.com/user-attachments/assets/733a0726-69f4-4a80-b0f4-8c8bba4b64da)) > **파일** > **설정**
 3. "개발자" 항목 클릭 > **설정편집** 버튼 클릭
 4. **`%APPDATA%\Roaming\Claude\`경로의 **claude_desktop_config.json** 연 후, 아래와 같이 입력 후 저장
 ```json
@@ -150,26 +150,6 @@ npm run cleanbuild
 
 - Claude에게 다음처럼 명령:
   > `antbot 프로젝트 목록을 알려줘`, `PR000000298 프로젝트를 실행해줘`
-
-## 📦 의존성
-
-```json
-"dependencies": {
-  "@modelcontextprotocol/sdk": "0.6.0"
-},
-"devDependencies": {
-  "@types/node": "^20.11.24",
-  "typescript": "^5.3.3"
-}
-```
-
----
-
-## 🔐 라이선스
-
-MIT License  
-본 프로젝트는 무료 오픈소스로 자유롭게 확장 및 수정이 가능합니다.
-
 ---
 
 ## 📞 문의
