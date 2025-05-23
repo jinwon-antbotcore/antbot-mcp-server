@@ -8,12 +8,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { startProjectSchema } from "./share/schema.js";
 import { API_ENDPOINTS, downloadFile, fetchApi } from "./share/api.js";
-import { extractZip } from "./share/zip.js";
-import WinReg from 'winreg';
 import path from "path";
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { stderr } from "process";
+import { extractZip, getRobotConfig } from "./share/file.js";
 
 // mcp server 생성
 const server = new Server({
@@ -24,6 +23,14 @@ const server = new Server({
     tools: {}
   }
 });
+
+// 설정 파일에서 값을 읽어옴
+const sysUserId = getRobotConfig('MANAGER_USER');
+const runnerPath = getRobotConfig('AntBot Runner');
+
+if (sysUserId === "" || runnerPath === "") {
+  throw new McpError(ErrorCode.InternalError, 'AntBot Robot에서 매니저 연동을 먼저 진행해주세요.\n');
+}
 
 // 툴 목록 조회
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -57,11 +64,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === 'Get_AntBot_Project_List') {
       try {
-          const requestData = {
-              SysUserId: 'admin',
-          };
-          stderr.write(`Get_AntBot_Project_List 요청 : ${requestData}`);
-          const data = await fetchApi(API_ENDPOINTS.PROJECT_LIST, requestData);
+          const data = await fetchApi(API_ENDPOINTS.PROJECT_LIST, {
+            SysUserId: sysUserId,
+          });
 
           return ({
               toolResult: data
@@ -76,37 +81,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           var parsed = startProjectSchema.parse(request.params.arguments);
           var projectId = parsed.projectId;
 
-          // download project
+          // projectId 기반으로 project 버전 조회
+          var versionNo = '1';
+          const versionList = await fetchApi(API_ENDPOINTS.PROJECT_VERSION_LIST, {
+            SysUserId: sysUserId,
+            ProjectId: projectId,
+          });
+          versionNo = versionList[versionList.length - 1]?.versionNo;
+
+          // 다운로드 요청
           const requestData = {
-              SysUserId: 'admin',
+              SysUserId: sysUserId,
               ProjectId: projectId,
-              VersionNo: '1',
+              VersionNo: versionNo,
           };
 
           stderr.write(`Download 요청: SysUserId=${requestData.SysUserId}, ProjectId=${requestData.ProjectId}, VersionNo=${requestData.VersionNo}\n`);
 
           const projectPath = await downloadFile(API_ENDPOINTS.PROJECT_DOWNLOAD, requestData);
           
-          // 압축해제
+          // 다운받은 프로젝트(.zip) 압축해제
           const unzipPath = await extractZip(projectPath);
-          const xmlPath = path.join(unzipPath, 'antConf.xml');
-          if (!existsSync(xmlPath)) {
-              throw new McpError(ErrorCode.InternalError, '파일 다운로드 실패: 압축 경로에 antConf.xml 파일이 존재하지 않습니다.');
+          const antConfPath = path.join(unzipPath, 'antConf.xml');
+          if (!existsSync(antConfPath)) {
+              throw new McpError(ErrorCode.InternalError, '파일 다운로드 실패: 압축 경로에 antConf.xml 파일이 존재하지 않습니다.\n');
           }
 
           // run project
-          const robotInstallPath = await getInstallPath();
-          const runnerPath = path.join(
-              path.dirname(robotInstallPath),
-              'Runner',
-              'AntBot Runner.exe'
-          );
-
-          if (robotInstallPath === "" || runnerPath === "") {
-              throw new McpError(ErrorCode.InternalError, 'Robot install path not found');
-          }
-
-          const args = [ xmlPath, 'mcprun' ];
+          const args = [ antConfPath, 'mcprun' ];
 
           try
           {
@@ -119,7 +121,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               runner.unref();
           }
           catch (spawnError: any) {
-              throw new McpError(ErrorCode.InternalError, `Runner 실행 실패: ${spawnError.message}`);
+              throw new McpError(ErrorCode.InternalError, `Runner 실행 실패: ${spawnError.message}\n`);
           }
 
           return ({
@@ -130,29 +132,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           })
 
       } catch (e: any) {
-          throw new McpError(ErrorCode.InternalError, e.message);
+          throw new McpError(ErrorCode.InternalError, e.message + '\n');
       }
   }
 
-  throw new McpError(ErrorCode.MethodNotFound, 'Method(Tool) not found');
+  throw new McpError(ErrorCode.MethodNotFound, 'Method(Tool) not found\n');
 });
-
-function getInstallPath(): Promise<string> {
-  const regKey = new WinReg({
-    hive: WinReg.HKLM,
-    key: '\\SOFTWARE\\AntBotRobot'
-  });
-
-  return new Promise((resolve, reject) => {
-    regKey.get('InstallPath', (err, item) => {
-      if (err) {
-        reject(new Error('\\SOFTWARE\\AntBotRobot reg key not found'));
-      } else {
-        resolve(item.value);
-      }
-    });
-  });
-}
 
 // mcp server 실행 (stdio 통신)
 const transport = new StdioServerTransport();

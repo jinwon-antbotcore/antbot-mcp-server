@@ -2,13 +2,15 @@ import path from "path";
 import os from "os";
 import { writeFile } from "fs/promises";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { getRobotConfig } from "./file.js";
 
-const URL_Base = 'http://antbot.co.kr:1090';
+const URL_Base = `${getRobotConfig('MANAGER_IP')}:${getRobotConfig('MANAGER_PORT')}`;
 
 // ✅ MCP 도구에서 사용하는 API 엔드포인트 상수 정의
 export const API_ENDPOINTS = {
     PROJECT_LIST: URL_Base + '/api/WebService/Project/List',
-    PROJECT_DOWNLOAD: URL_Base + '/api/WebService/Download/WorkflowSource'
+    PROJECT_VERSION_LIST: URL_Base + '/api/WebService/ProjectVersion/List',
+    PROJECT_DOWNLOAD: URL_Base + '/api/WebService/Download/WorkflowSource',
 } as const;
 
 /**
@@ -29,12 +31,12 @@ export async function fetchApi<T = any>(url: string, requestData: any): Promise<
         });
 
         if (!response.ok) {
-            throw new McpError(ErrorCode.InternalError, `API 호출 실패: ${response.status}`);
+            throw new McpError(ErrorCode.InternalError, `API 호출 실패: ${response.status}\n`);
         }
 
         return await response.json();
     } catch (error) {
-        throw new McpError(ErrorCode.InternalError, `API 호출 중 오류 발생: ${error}`);
+        throw new McpError(ErrorCode.InternalError, `API 호출 중 오류 발생: ${error}\n`);
     }
 }
 
@@ -55,7 +57,7 @@ export async function downloadFile(url: string, requestData: any): Promise<strin
     });
 
     if (!response.ok) {
-        throw new McpError(ErrorCode.InternalError, `파일 다운로드 실패: ${response.status}`);
+        throw new McpError(ErrorCode.InternalError, `파일 다운로드 실패: ${response.status}\n`);
     }
 
     const buffer = await response.arrayBuffer();

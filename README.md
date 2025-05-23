@@ -43,6 +43,9 @@ npm install
 
 # 빌드
 npm run build
+
+# 클린빌드
+npm run cleanbuild
 ```
 ---
 
