@@ -119,9 +119,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
               const command = `"${runnerPath}" ${args.map(arg => `"${arg}"`).join(' ')}`;
 
-              sudo.exec(command, options, (error: any, stdout: any, stderr: any) => {
-                  if (error) throw error;
-              });
+              sudo.exec(command, options, (error: any) => { if (error) throw error; });
           }
           catch (spawnError: any) {
               throw new McpError(ErrorCode.InternalError, `Runner 실행 실패: ${spawnError.message}\n`);
@@ -130,7 +128,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return ({
               toolResult: {
                   result: 'yes',
-                  message: 'AntBot Runner 실행 성공'
+                  message: 'AntBot Runner 실행 요청을 전송했습니다.'
               }
           })
 

@@ -6,6 +6,12 @@ import os from "os";
 import AdmZip from "adm-zip";
 import { JSDOM } from 'jsdom';
 
+// AntBot 경로 상수
+export const SYSTEM_PATHS = {
+    ANT_BOT_LOG: path.join(os.homedir(), '.AntBot', 'Log', 'Develop'),
+    ANT_BOT_CONFIG: path.join(os.homedir(), 'AppData', 'Roaming', 'AntBotRobot', 'AntBot_Robot.exe.config')
+} as const;
+
 /**
  * ZIP 파일을 임시 디렉토리에 압축 해제
  * @param zipPath - 압축 파일 경로
@@ -30,12 +36,11 @@ export async function extractZip(zipPath: string): Promise<string> {
 // 설정 파일에서 MANAGER_USER 값을 읽어오는 함수
 export function getRobotConfig(key: string): string {
     try {
-      const configPath = path.join(os.homedir(), 'AppData', 'Roaming', 'AntBotRobot', 'AntBot_Robot.exe.config');
-      if (!existsSync(configPath)) {
+      if (!existsSync(SYSTEM_PATHS.ANT_BOT_CONFIG)) {
         throw new McpError(ErrorCode.InternalError, '설정 파일을 찾을 수 없습니다.\n');
       }
   
-      const xmlContent = readFileSync(configPath, 'utf-8');
+      const xmlContent = readFileSync(SYSTEM_PATHS.ANT_BOT_CONFIG, 'utf-8');
       const dom = new JSDOM(xmlContent, { contentType: 'text/xml' });
       const xmlDoc = dom.window.document;
       
