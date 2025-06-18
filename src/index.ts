@@ -13,6 +13,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { stderr } from "process";
 import { extractZip, getRobotConfig } from "./share/file.js";
+import sudo from 'sudo-prompt';
 
 // mcp server 생성
 const server = new Server({
@@ -112,13 +113,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           try
           {
-              const runner = spawn(runnerPath, args, {
-                  detached: true,
-                  stdio: 'ignore',
-                  windowsHide: false,
-              });
+              const options = {
+                  name: 'AntBot Runner',
+              };
 
-              runner.unref();
+              const command = `"${runnerPath}" ${args.map(arg => `"${arg}"`).join(' ')}`;
+
+              sudo.exec(command, options, (error: any, stdout: any, stderr: any) => {
+                  if (error) throw error;
+              });
           }
           catch (spawnError: any) {
               throw new McpError(ErrorCode.InternalError, `Runner 실행 실패: ${spawnError.message}\n`);
