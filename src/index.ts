@@ -6,140 +6,190 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { startProjectSchema } from "./share/schema.js";
-import { API_ENDPOINTS, downloadFile, fetchApi } from "./share/api.js";
-import path from "path";
-import { spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { stderr } from "process";
-import { extractZip, getRobotConfig } from "./share/file.js";
-import sudo from 'sudo-prompt';
 
-// mcp server 생성
-const server = new Server({
-  name: "mcp-server",
-  version: "1.0.0",
-}, {
-  capabilities: {
-    tools: {}
+// 내부 모듈 임포트
+import { validateAndGetConfig } from "./config.js";
+import { logger } from "./logger.js";
+import { ProjectService } from "./projectService.js";
+import { startProjectSchema, runProjectSchema } from "./schema.js";
+
+/**
+ * MCP 서버 메인 클래스
+ */
+class McpServer {
+  private readonly server: Server;
+  private readonly projectService: ProjectService;
+
+  constructor() {
+    // 설정 검증 및 로드
+    const config = validateAndGetConfig();
+    
+    // 프로젝트 서비스 초기화
+    this.projectService = new ProjectService(config);
+    
+    // MCP 서버 생성
+    this.server = new Server({
+      name: "antbot-mcp-server",
+      version: "1.0.0",
+    }, {
+      capabilities: {
+        tools: {}
+      }
+    });
+
+    this.setupHandlers();
+    logger.info('MCP 서버 초기화 완료');
   }
-});
 
-// 설정 파일에서 값을 읽어옴
-const sysUserId = getRobotConfig('MANAGER_USER');
-const runnerPath = getRobotConfig('AntBot Runner');
+  /**
+   * 요청 핸들러들을 설정합니다.
+   */
+  private setupHandlers(): void {
+    this.setupToolListHandler();
+    this.setupToolCallHandler();
+  }
 
-if (sysUserId === "" || runnerPath === "") {
-  throw new McpError(ErrorCode.InternalError, 'AntBot Robot에서 매니저 연동을 먼저 진행해주세요.\n');
+  /**
+   * 툴 목록 조회 핸들러를 설정합니다.
+   */
+  private setupToolListHandler(): void {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      logger.debug('툴 목록 조회 요청');
+      
+      return {
+        tools: [
+          {
+            name: 'Get_AntBot_Project_List',
+            description: 'Returns a list of antbot projects.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          },
+          {
+            name: 'Get_AntBot_Project_Info',
+            description: 'Get project information including required parameters',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                projectId: { type: 'string' }
+              },
+              required: ['projectId']
+            }
+          },
+          {
+            name: 'Run_AntBot_Project',
+            description: 'Run the project with required parameters',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                projectId: { type: 'string' },
+                projectPath: { type: 'string' },
+                parameters: { 
+                  type: 'object',
+                  additionalProperties: true
+                }
+              },
+              required: ['projectId', 'projectPath']
+            }
+          }
+        ]
+      };
+    });
+  }
+
+  /**
+   * 툴 호출 핸들러를 설정합니다.
+   */
+  private setupToolCallHandler(): void {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
+      
+      logger.debug(`툴 호출 요청: ${name}`);
+
+      try {
+        switch (name) {
+          case 'Get_AntBot_Project_List':
+            return await this.handleGetProjectList();
+            
+          case 'Get_AntBot_Project_Info':
+            return await this.handleGetProjectInfo(args);
+            
+          case 'Run_AntBot_Project':
+            return await this.handleRunProject(args);
+            
+          default:
+            throw new McpError(ErrorCode.MethodNotFound, `지원하지 않는 메서드입니다: ${name}`);
+        }
+      } catch (error) {
+        logger.error(`툴 호출 실패: ${name}`, error as Error);
+        
+        if (error instanceof McpError) {
+          throw error;
+        }
+        
+        throw new McpError(ErrorCode.InternalError, (error as Error).message);
+      }
+    });
+  }
+
+  /**
+   * 프로젝트 목록 조회를 처리합니다.
+   */
+  private async handleGetProjectList() {
+    const data = await this.projectService.getProjectList();
+    return { toolResult: data };
+  }
+
+  /**
+   * 프로젝트 정보 조회를 처리합니다.
+   */
+  private async handleGetProjectInfo(args: any) {
+    const parsed = startProjectSchema.parse(args);
+    const result = await this.projectService.getProjectInfo(parsed.projectId);
+    return { toolResult: result };
+  }
+
+  /**
+   * 프로젝트 실행을 처리합니다.
+   */
+  private async handleRunProject(args: any) {
+    const parsed = runProjectSchema.parse(args);
+    const result = await this.projectService.runProject(parsed);
+    return { toolResult: result };
+  }
+
+  /**
+   * 서버를 시작합니다.
+   */
+  async start(): Promise<void> {
+    try {
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      logger.info('MCP 서버 시작 완료');
+    } catch (error) {
+      logger.error('MCP 서버 시작 실패', error as Error);
+      throw error;
+    }
+  }
 }
 
-// 툴 목록 조회
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-        tools: [
-            {
-                name: 'Get_AntBot_Project_List',
-                description: 'Returns a list of antbot projects.',
-                inputSchema: {
-                type: 'object',
-                properties: {},
-                required: []
-                }
-            },
-            {
-                name: 'Run_AntBot_Project',
-                description: 'Run the project with the project ID provided by the user.',
-                inputSchema: {
-                type: 'object',
-                properties: {
-                    projectId: { type: 'string' },
-                },
-                required: ['projectId']
-                }
-            }
-        ]
-    };
-  });
-  
-// 툴 요청 처리
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === 'Get_AntBot_Project_List') {
-      try {
-          const data = await fetchApi(API_ENDPOINTS.PROJECT_LIST, {
-            SysUserId: sysUserId,
-          });
-
-          return ({
-              toolResult: data
-          })
-
-      } catch (e: any) {
-        throw new Error(e.message);
-      }
+/**
+ * 애플리케이션 진입점
+ */
+async function main(): Promise<void> {
+  try {
+    const mcpServer = new McpServer();
+    await mcpServer.start();
+  } catch (error) {
+    logger.error('애플리케이션 시작 실패', error as Error);
+    process.exit(1);
   }
-  if (request.params.name === 'Run_AntBot_Project') {
-      try {
-          var parsed = startProjectSchema.parse(request.params.arguments);
-          var projectId = parsed.projectId;
+}
 
-          // projectId 기반으로 project 버전 조회
-          var versionNo = '1';
-          const versionList = await fetchApi(API_ENDPOINTS.PROJECT_VERSION_LIST, {
-            SysUserId: sysUserId,
-            ProjectId: projectId,
-          });
-          versionNo = versionList[versionList.length - 1]?.versionNo;
-
-          // 다운로드 요청
-          const requestData = {
-              SysUserId: sysUserId,
-              ProjectId: projectId,
-              VersionNo: versionNo,
-          };
-
-          stderr.write(`Download 요청: SysUserId=${requestData.SysUserId}, ProjectId=${requestData.ProjectId}, VersionNo=${requestData.VersionNo}\n`);
-
-          const projectPath = await downloadFile(API_ENDPOINTS.PROJECT_DOWNLOAD, requestData);
-          
-          // 다운받은 프로젝트(.zip) 압축해제
-          const unzipPath = await extractZip(projectPath);
-          const antConfPath = path.join(unzipPath, 'antConf.xml');
-          if (!existsSync(antConfPath)) {
-              throw new McpError(ErrorCode.InternalError, '파일 다운로드 실패: 압축 경로에 antConf.xml 파일이 존재하지 않습니다.\n');
-          }
-
-          // run project
-          const args = [ antConfPath, 'mcprun' ];
-
-          try
-          {
-              const options = {
-                  name: 'AntBot Runner',
-              };
-
-              const command = `"${runnerPath}" ${args.map(arg => `"${arg}"`).join(' ')}`;
-
-              sudo.exec(command, options, (error: any) => { if (error) throw error; });
-          }
-          catch (spawnError: any) {
-              throw new McpError(ErrorCode.InternalError, `Runner 실행 실패: ${spawnError.message}\n`);
-          }
-
-          return ({
-              toolResult: {
-                  result: 'yes',
-                  message: 'AntBot Runner 실행 요청을 전송했습니다.'
-              }
-          })
-
-      } catch (e: any) {
-          throw new McpError(ErrorCode.InternalError, e.message + '\n');
-      }
-  }
-
-  throw new McpError(ErrorCode.MethodNotFound, 'Method(Tool) not found\n');
+// 애플리케이션 실행
+main().catch((error) => {
+  logger.error('처리되지 않은 오류', error);
+  process.exit(1);
 });
-
-// mcp server 실행 (stdio 통신)
-const transport = new StdioServerTransport();
-await server.connect(transport);
