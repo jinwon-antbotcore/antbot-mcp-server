@@ -111,8 +111,8 @@ export class ProjectService {
       // 프로젝트 정보 캐시 확인
       this.validateProjectExecution(projectId);
 
-      // AntBot Runner 실행
-      await this.executeAntBotRunner(projectPath, parameters);
+      // AntBot Runner 실행 (백그라운드에서 실행)
+      this.executeAntBotRunner(projectPath, parameters);
 
       const message = 'AntBot Runner 실행 요청을 전송했습니다.';
       logger.info(`프로젝트 실행 완료: ${projectId} - ${message}`);
@@ -194,7 +194,7 @@ export class ProjectService {
    * @param projectPath - 프로젝트 경로
    * @param parameters - 실행 매개변수
    */
-  private async executeAntBotRunner(projectPath: string, parameters: Record<string, any>): Promise<void> {
+  private executeAntBotRunner(projectPath: string, parameters: Record<string, any>): void {
     const runnerArgs = [projectPath, CONFIG.RUNNER.COMMAND_MODE];
 
     // parameters 객체를 base64로 인코딩해서 추가
@@ -209,16 +209,14 @@ export class ProjectService {
 
     logger.debug(`Runner 실행 명령: ${command}`);
 
-    return new Promise((resolve, reject) => {
-      sudo.exec(command, options, (error: any) => {
-        if (error) {
-          logger.error('Runner 실행 실패', error);
-          reject(new Error(`Runner 실행 실패: ${error.message}`));
-        } else {
-          logger.debug('Runner 실행 성공');
-          resolve();
-        }
-      });
+    sudo.exec(command, options, (error: any) => {
+      if (error) {
+        logger.error('Runner 실행 실패', error);
+        // 에러 로그만 남기고, 실행 요청 자체는 성공으로 처리
+        // Runner가 백그라운드에서 실행되므로 즉시 에러를 throw하지 않음
+      } else {
+        logger.debug('Runner 실행 성공');
+      }
     });
   }
 
