@@ -12,6 +12,11 @@ import {
   VersionListResponse,
   RunProjectArgs 
 } from './types.js';
+import { exec as execCb } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+
+const execAsync = promisify(execCb);
 
 /**
  * 프로젝트 서비스 클래스
@@ -110,6 +115,13 @@ export class ProjectService {
 
       // 프로젝트 정보 캐시 확인
       this.validateProjectExecution(projectId);
+
+      // Runner 프로세스가 이미 실행 중인지 확인
+      if (await this.isRunnerProcessRunning()) {
+        const message = '현재 AntBot이 다른 작업을 수행 중입니다.';
+        logger.warn(message);
+        throw new McpError(ErrorCode.InternalError, message);
+      }
 
       // AntBot Runner 실행 (백그라운드에서 실행)
       this.executeAntBotRunner(projectPath, parameters);
@@ -218,6 +230,24 @@ export class ProjectService {
         logger.debug('Runner 실행 성공');
       }
     });
+  }
+
+  /**
+   * AntBot Runner 프로세스가 이미 실행 중인지 확인합니다.
+   * @returns 실행 중이면 true, 아니면 false
+   */
+  private async isRunnerProcessRunning(): Promise<boolean> {
+    try {
+      const executableName = path.basename(this.config.runnerPath);
+      
+      // tasklist 명령 사용
+      const { stdout } = await execAsync(`tasklist /FI "IMAGENAME eq ${executableName}"`);
+      return stdout.toLowerCase().includes(executableName.toLowerCase());
+    } catch (error) {
+      // 프로세스 확인 실패 시 실행 중이 아닌 것으로 간주
+      logger.warn(`AntBot Runner 프로세스 상태 확인 실패: ${(error as Error).message}`);
+      return false;
+    }
   }
 
   /**
