@@ -9,6 +9,8 @@
 - **AntBot 프로젝트 목록 조회** (`Get_AntBot_Project_List`)
 - **프로젝트 상세 정보 조회** (`Get_AntBot_Project_Info`) - 매개변수 정보 포함
 - **프로젝트 실행** (`Run_AntBot_Project`) - 매개변수 전달 지원
+- **실행 중 프로세스 감지** - 중복 실행 방지 (Windows 환경)
+- **실행 로그 조회** (`Get_Last_Mcprun_Log`) - 최신 mcprun 로그 확인
 - **자동 설정 관리** - AntBot Robot 설정 파일에서 자동으로 설정 로드
 - **프로젝트 캐싱** - 성능 최적화를 위한 프로젝트 정보 캐싱
 - **로깅 시스템** - 상세한 로그 기록 및 디버깅 지원
@@ -21,13 +23,14 @@
 src/
 ├── index.ts              # MCP 서버 진입점 및 메인 클래스
 ├── projectService.ts     # 프로젝트 관리 비즈니스 로직
-├── api.ts               # 외부 API 호출 유틸리티
-├── config.ts            # 설정 관리 및 검증
-├── fileUtils.ts         # 파일 처리 유틸리티 (ZIP, XML 파싱)
-├── logger.ts            # 로깅 시스템
-├── schema.ts            # Zod 기반 입력 검증 스키마
-├── types.ts             # TypeScript 타입 정의
-└── constants.ts         # 상수 정의
+├── logService.ts         # 로그 조회 서비스
+├── api.ts                # 외부 API 호출 유틸리티
+├── config.ts             # 설정 관리 및 검증
+├── fileUtils.ts          # 파일 처리 유틸리티 (ZIP, XML 파싱)
+├── logger.ts             # 로깅 시스템
+├── schema.ts             # Zod 기반 입력 검증 스키마
+├── types.ts              # TypeScript 타입 정의
+└── constants.ts          # 상수 정의
 ```
 
 ### 핵심 컴포넌트
@@ -41,9 +44,14 @@ src/
    - 프로젝트 목록 조회
    - 프로젝트 정보 파싱 (antConf.xml)
    - 프로젝트 다운로드 및 실행
+   - 실행 중 프로세스 감지 (Windows tasklist)
    - 캐싱 시스템
 
-3. **설정 관리** (`config.ts`)
+3. **LogService 클래스** (`logService.ts`)
+   - mcprun 로그 파일 조회
+   - 최신 로그 tail 기능
+
+4. **설정 관리** (`config.ts`)
    - AntBot Robot 설정 파일 자동 로드
    - 필수 설정 검증
    - 동적 설정 관리
@@ -52,6 +60,7 @@ src/
 
 ### 전제 조건
 - **Node.js** v16 이상 (권장: LTS 버전)
+- **Windows 환경** (AntBot Runner 프로세스 감지 기능)
 - **AntBot Robot** 설치 및 매니저 연동 완료
 - **AntBot Robot 설정 파일** 존재: `%APPDATA%\Roaming\AntBotRobot\AntBot_Robot.exe.config`
 
@@ -178,6 +187,33 @@ AntBot 매니저에서 사용 가능한 프로젝트 목록을 조회합니다.
 }
 ```
 
+**중복 실행 방지:**
+- 실행 전 AntBot Runner 프로세스 상태 확인
+- 이미 실행 중이면 `"현재 AntBot이 다른 작업을 수행 중입니다."` 메시지와 함께 오류 발생
+
+### 4. Get_Last_Mcprun_Log
+최신 mcprun 로그의 마지막 100줄을 조회합니다.
+
+```json
+{
+  "name": "Get_Last_Mcprun_Log",
+  "description": "Returns the last 100 lines of the latest mcprun log.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+```
+
+**응답 예시:**
+```json
+{
+  "fileName": "mcprun_20241201143022.log",
+  "content": "2024-12-01 14:30:22 [INFO] 프로젝트 실행 시작\n2024-12-01 14:30:23 [INFO] 매개변수 로드 완료\n..."
+}
+```
+
 ## 🔧 주요 스크립트
 
 | 명령어 | 설명 |
@@ -203,6 +239,7 @@ npm run inspector
 1. **프로젝트 목록 조회**: `Get_AntBot_Project_List` 호출
 2. **프로젝트 정보 조회**: `Get_AntBot_Project_Info` 호출 (projectId 필요)
 3. **프로젝트 실행**: `Run_AntBot_Project` 호출 (projectId, projectPath, parameters 필요)
+4. **로그 조회**: `Get_Last_Mcprun_Log` 호출
 
 ## 🧠 Claude Desktop 연동
 
@@ -243,6 +280,7 @@ Claude에게 다음과 같이 요청할 수 있습니다:
 - "AntBot 프로젝트 목록을 보여줘"
 - "PR000000298 프로젝트의 정보를 알려줘"
 - "PR000000298 프로젝트를 실행해줘"
+- "최신 실행 로그를 보여줘"
 
 ## ⚙️ 설정 관리
 
@@ -274,6 +312,7 @@ AntBot Robot에서 매니저 연동을 먼저 진행해주세요.
 ### 로그 레벨
 - **INFO**: 일반적인 작업 정보
 - **DEBUG**: 상세한 디버깅 정보
+- **WARN**: 경고 정보 (프로세스 감지 실패 등)
 - **ERROR**: 오류 정보
 
 ### 주요 로그 메시지
@@ -281,6 +320,12 @@ AntBot Robot에서 매니저 연동을 먼저 진행해주세요.
 - API 호출 결과
 - 프로젝트 다운로드 및 실행 상태
 - 설정 검증 결과
+- AntBot Runner 프로세스 상태 확인
+
+### mcprun 로그
+- 파일명 형식: `mcprun_YYYYMMDDHHMMSS.log`
+- 위치: `%USERPROFILE%\.AntBot\Log\Develop\`
+- MCP 도구를 통해 최신 로그 조회 가능
 
 ## 📦 의존성
 
@@ -289,6 +334,7 @@ AntBot Robot에서 매니저 연동을 먼저 진행해주세요.
 - `jsdom`: XML 설정 파일 파싱
 - `adm-zip`: 프로젝트 ZIP 파일 처리
 - `sudo-prompt`: 관리자 권한 실행 (필요시)
+- `xml2js`: XML 파싱
 
 ### 개발 의존성
 - `typescript`: TypeScript 컴파일러
@@ -306,6 +352,22 @@ AntBot Robot에서 매니저 연동을 먼저 진행해주세요.
 - 상세한 에러 메시지
 - 재시도 로직
 - Graceful degradation
+
+### 프로세스 관리
+- Windows tasklist를 통한 프로세스 감지
+- 중복 실행 방지로 리소스 보호
+- 보수적 처리 (감지 실패 시 실행 허용)
+
+## 🔒 보안 및 안정성
+
+### 프로세스 감지
+- Windows 환경에서만 지원
+- `tasklist` 명령어를 통한 안전한 프로세스 확인
+- 감지 실패 시에도 안정성 보장
+
+### 권한 관리
+- sudo-prompt를 통한 관리자 권한 실행
+- 필요한 경우에만 권한 상승
 
 ## 📞 지원 및 문의
 
