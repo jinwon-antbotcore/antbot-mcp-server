@@ -12,6 +12,7 @@ import { validateAndGetConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { ProjectService } from "./projectService.js";
 import { startProjectSchema, runProjectSchema } from "./schema.js";
+import { LogService } from "./logService.js";
 
 /**
  * MCP 서버 메인 클래스
@@ -19,13 +20,15 @@ import { startProjectSchema, runProjectSchema } from "./schema.js";
 class McpServer {
   private readonly server: Server;
   private readonly projectService: ProjectService;
+  private readonly logService: LogService;
 
   constructor() {
     // 설정 검증 및 로드
     const config = validateAndGetConfig();
     
-    // 프로젝트 서비스 초기화
+    // 서비스 초기화
     this.projectService = new ProjectService(config);
+    this.logService = new LogService();
     
     // MCP 서버 생성
     this.server = new Server({
@@ -93,6 +96,15 @@ class McpServer {
               },
               required: ['projectId', 'projectPath']
             }
+          },
+          {
+            name: 'Get_Last_Mcprun_Log',
+            description: 'Returns the last 100 lines of the latest mcprun log.',
+            inputSchema: {
+              type: 'object',
+              properties: {},
+              required: []
+            }
           }
         ]
       };
@@ -118,6 +130,9 @@ class McpServer {
             
           case 'Run_AntBot_Project':
             return await this.handleRunProject(args);
+            
+          case 'Get_Last_Mcprun_Log':
+            return await this.handleGetLastLog();
             
           default:
             throw new McpError(ErrorCode.MethodNotFound, `지원하지 않는 메서드입니다: ${name}`);
@@ -157,6 +172,16 @@ class McpServer {
   private async handleRunProject(args: any) {
     const parsed = runProjectSchema.parse(args);
     const result = await this.projectService.runProject(parsed);
+    return { toolResult: result };
+  }
+
+  /**
+   * MCP를 통한 최신 Runner 실행 로그의 마지막 100줄을 반환합니다.
+   */
+  private async handleGetLastLog() {
+    logger.debug('최신 mcprun 로그 조회 시작');
+    const result = await this.logService.getLastRunnerLog(100);
+    logger.info(`로그 반환: ${result.fileName} - ${result.content.split('\n').length}줄`);
     return { toolResult: result };
   }
 
