@@ -178,18 +178,14 @@ class McpServer {
 /**
  * 애플리케이션 진입점
  */
-async function main(): Promise<void> {
+function main(): void {
   try {
     const mcpServer = new McpServer();
-    await mcpServer.start();
+    mcpServer.start();
   } catch (error) {
     logger.error('애플리케이션 시작 실패', error as Error);
     process.exit(1);
   }
 }
 
-// 애플리케이션 실행
-main().catch((error) => {
-  logger.error('처리되지 않은 오류', error);
-  process.exit(1);
-});
+main();
